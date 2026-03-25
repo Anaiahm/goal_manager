@@ -693,7 +693,10 @@ class WeeklyPage extends StatefulWidget {
 }
 
 class _WeeklyPageState extends State<WeeklyPage> {
+  int _sel = DateTime.now().weekday - 1; // 0=Mon … 6=Sun
+
   static const _short = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+  static const _full  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   static const _dayAccents = [
     Color(0xFFE8A87C), Color(0xFF7C6BAE), Color(0xFF7ABFB0),
     Color(0xFFE87C9A), Color(0xFFE8C87C), Color(0xFF7CA8E8), Color(0xFF9AE87C),
@@ -721,17 +724,187 @@ class _WeeklyPageState extends State<WeeklyPage> {
     widget.onWeekChanged(di, DayData(focus: data.focus, events: data.events, tasks: tasks));
   }
 
-  @override
-  Widget build(BuildContext ctx) {
-    final c          = colorsOf(ctx);
+  // ── Mobile: single day view ──────────────────────────────────
+  Widget _buildMobileDay(BuildContext ctx, ThemeColors c) {
+    final data      = widget.week[_sel]!;
     final isColorful = AppThemeNotifier.of(ctx).value == AppTheme.colorful;
-    
-final double availableW = MediaQuery.of(ctx).size.width >= kMobileBreak
-    ? MediaQuery.of(ctx).size.width - 200  // subtract sidebar width
-    : MediaQuery.of(ctx).size.width;
-final double leftW = availableW * 0.275;
-final double dayW  = (availableW - leftW) / 7;
-    // Left column = 27.5% of screen width (was ~220px fixed)
+    final accent    = isColorful ? _dayAccents[_sel] : c.primary;
+    final date      = _weekStart.add(Duration(days: _sel));
+    final doneTasks = data.tasks.where((t) => t.done).length;
+    final doneTodos = widget.weeklyTodos.where((t) => t.done).length;
+
+    return Scaffold(
+      backgroundColor: c.background,
+      appBar: AppBar2(title: 'Daily View'),
+      body: Column(
+        children: [
+          // Day navigator
+          Container(
+            color: c.surface,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: Icon(Icons.chevron_left, color: _sel > 0 ? c.primary : c.border),
+                  onPressed: _sel > 0 ? () => setState(() => _sel--) : null,
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Text(_full[_sel],
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: accent)),
+                      Text(_fmtDate(date),
+                        style: TextStyle(fontSize: 12, color: c.textMuted)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.chevron_right, color: _sel < 6 ? c.primary : c.border),
+                  onPressed: _sel < 6 ? () => setState(() => _sel++) : null,
+                ),
+              ],
+            ),
+          ),
+          // Day dots indicator
+          Container(
+            color: c.surface,
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(7, (i) => GestureDetector(
+                onTap: () => setState(() => _sel = i),
+                child: Container(
+                  width: i == _sel ? 20 : 8,
+                  height: 8,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: i == _sel ? accent : c.border,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              )),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  // Focus
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: accent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.center_focus_strong_outlined, size: 14, color: accent),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(data.focus,
+                        style: TextStyle(fontSize: 13, color: accent, fontWeight: FontWeight.w500))),
+                    ]),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Events
+                  _mobileSectionHeader(c, 'Events', data.events.length, null),
+                  const SizedBox(height: 8),
+                  if (data.events.isEmpty)
+                    Text('No events today', style: TextStyle(fontSize: 13, color: c.textMuted))
+                  else
+                    ...data.events.map((e) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(color: c.surface,
+                        borderRadius: BorderRadius.circular(10), border: Border.all(color: c.border)),
+                      child: Row(children: [
+                        Icon(Icons.schedule, size: 14, color: accent),
+                        const SizedBox(width: 8),
+                        Text(e.time, style: TextStyle(fontSize: 12, color: c.textMuted, fontWeight: FontWeight.w500)),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(e.title, style: TextStyle(fontSize: 13, color: c.textPrimary))),
+                      ]),
+                    )),
+                  const SizedBox(height: 18),
+
+                  // Tasks
+                  _mobileSectionHeader(c, 'Tasks', doneTasks, data.tasks.length),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: data.tasks.isEmpty ? 0 : doneTasks / data.tasks.length,
+                      minHeight: 5, color: accent, backgroundColor: c.border),
+                  ),
+                  const SizedBox(height: 10),
+                  ...data.tasks.map((t) => _mobileCheckRow(c, accent, t.text, t.done,
+                    () => _toggleDayTask(_sel, t))),
+                  const SizedBox(height: 18),
+
+                  // Habits
+                  _mobileSectionHeader(c, 'Habits',
+                    widget.habits.where((h) => h.days[_sel]).length,
+                    widget.habits.length),
+                  const SizedBox(height: 8),
+                  ...widget.habits.asMap().entries.map((he) {
+                    final h = he.value;
+                    return _mobileCheckRow(c, accent, h.name, h.days[_sel],
+                      () => _toggleHabit(he.key, _sel));
+                  }),
+                  const SizedBox(height: 18),
+
+                  // Weekly To-Do
+                  _mobileSectionHeader(c, 'Weekly To-Do', doneTodos, widget.weeklyTodos.length),
+                  const SizedBox(height: 8),
+                  ...widget.weeklyTodos.map((t) => _mobileCheckRow(c, accent, t.text, t.done,
+                    () => _toggleTodo(t))),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mobileSectionHeader(ThemeColors c, String title, int count, int? total) =>
+    Row(children: [
+      Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary)),
+      const SizedBox(width: 8),
+      Text(total != null ? '$count / $total' : '$count',
+        style: TextStyle(fontSize: 12, color: c.textMuted)),
+    ]);
+
+  Widget _mobileCheckRow(ThemeColors c, Color accent, String text, bool done, VoidCallback onTap) =>
+    GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(color: c.surface,
+          borderRadius: BorderRadius.circular(10), border: Border.all(color: c.border)),
+        child: Row(children: [
+          Icon(done ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+            size: 20, color: done ? accent : c.border),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: TextStyle(fontSize: 14,
+            color: done ? c.textMuted : c.textPrimary,
+            decoration: done ? TextDecoration.lineThrough : null,
+            decorationColor: c.textMuted))),
+        ]),
+      ),
+    );
+
+  // ── Desktop: full weekly grid (unchanged) ────────────────────
+  Widget _buildDesktop(BuildContext ctx, ThemeColors c) {
+    final isColorful = AppThemeNotifier.of(ctx).value == AppTheme.colorful;
+    final availableW = MediaQuery.of(ctx).size.width - 200;
+    final leftW      = availableW * 0.275;
+    final dayW       = (availableW - leftW) / 7;
 
     final totalChecks = widget.habits.fold(0, (s, h) => s + h.days.where((d) => d).length);
     final maxChecks   = widget.habits.length * 7;
@@ -743,330 +916,218 @@ final double dayW  = (availableW - leftW) / 7;
       appBar: AppBar2(title: 'Weekly Plan'),
       body: SingleChildScrollView(
         child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
 
-              // ── LEFT COLUMN ─────────────────────────────────────
-              SizedBox(
-                width: leftW,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: c.surface,
-                    border: Border(right: BorderSide(color: c.border, width: 1.5)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-
-                      // Header
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                        color: c.primary,
-                        child: Text('WEEKLY PLAN',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-                            color: Colors.white, letterSpacing: 1.2)),
-                      ),
-
-                      // Week dates
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.border))),
-                        child: Column(children: [
-                          _dateChip(c, 'WEEK START', _fmtDate(_weekStart), leftW),
-                          const SizedBox(height: 6),
-                          _dateChip(c, 'WEEK END',   _fmtDate(_weekEnd),   leftW),
-                        ]),
-                      ),
-
-                      // Habits header
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('WEEKLY HABITS',
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                                color: c.textMuted, letterSpacing: 1)),
-                            Text('${(habitPct * 100).round()}%',
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: c.primary)),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(2),
-                          child: LinearProgressIndicator(
-                            value: habitPct, minHeight: 3,
-                            color: c.primary, backgroundColor: c.border),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Day letter headers for habits
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+            // Left column
+            SizedBox(
+              width: leftW,
+              child: Container(
+                decoration: BoxDecoration(color: c.surface,
+                  border: Border(right: BorderSide(color: c.border, width: 1.5))),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                      color: c.primary,
+                      child: const Text('WEEKLY PLAN', style: TextStyle(fontSize: 12,
+                        fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 1.2))),
+                    Container(padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.border))),
+                      child: Column(children: [
+                        _dateChip(c, 'WEEK START', _fmtDate(_weekStart), leftW),
+                        const SizedBox(height: 6),
+                        _dateChip(c, 'WEEK END',   _fmtDate(_weekEnd),   leftW),
+                      ])),
+                    Padding(padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Text('WEEKLY HABITS', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                          color: c.textMuted, letterSpacing: 1)),
+                        Text('${(habitPct * 100).round()}%',
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: c.primary)),
+                      ])),
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: ClipRRect(borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(value: habitPct, minHeight: 3,
+                          color: c.primary, backgroundColor: c.border))),
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: LayoutBuilder(builder: (ctx, cons) {
+                        const nameW = 0.52;
+                        final boxW  = cons.maxWidth * (1 - nameW) / 7;
+                        return Row(children: [
+                          SizedBox(width: cons.maxWidth * nameW),
+                          ..._short.asMap().entries.map((e) => SizedBox(width: boxW,
+                            child: Center(child: Text(e.value[0],
+                              style: TextStyle(fontSize: 8,
+                                color: isColorful ? _dayAccents[e.key] : c.textMuted,
+                                fontWeight: FontWeight.w700))))),
+                        ]);
+                      }),
+                    ),
+                    const SizedBox(height: 3),
+                    ...widget.habits.asMap().entries.map((he) {
+                      final hi = he.key; final h = he.value;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                         child: LayoutBuilder(builder: (ctx, cons) {
-                          // space left after habit name column
-                          const nameW = 0.52; // 52% for name
+                          const nameW = 0.52;
                           final boxW  = cons.maxWidth * (1 - nameW) / 7;
                           return Row(children: [
-                            SizedBox(width: cons.maxWidth * nameW),
-                            ..._short.asMap().entries.map((e) => SizedBox(
-                              width: boxW,
-                              child: Center(child: Text(e.value[0],
-                                style: TextStyle(fontSize: 8,
-                                  color: isColorful ? _dayAccents[e.key] : c.textMuted,
-                                  fontWeight: FontWeight.w700))),
+                            SizedBox(width: cons.maxWidth * nameW,
+                              child: Text(h.name, style: TextStyle(fontSize: 10, color: c.textPrimary),
+                                overflow: TextOverflow.ellipsis)),
+                            ...List.generate(7, (di) => GestureDetector(
+                              onTap: () => _toggleHabit(hi, di),
+                              child: SizedBox(width: boxW, child: Center(child: Container(
+                                width: 13, height: 13,
+                                decoration: BoxDecoration(
+                                  color: h.days[di] ? (isColorful ? _dayAccents[di] : c.primary) : Colors.transparent,
+                                  border: Border.all(color: h.days[di] ? (isColorful ? _dayAccents[di] : c.primary) : c.border, width: 1.2),
+                                  borderRadius: BorderRadius.circular(3)),
+                                child: h.days[di] ? const Icon(Icons.check, size: 8, color: Colors.white) : null,
+                              ))),
                             )),
                           ]);
                         }),
+                      );
+                    }),
+                    Container(margin: const EdgeInsets.only(top: 12),
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                      decoration: BoxDecoration(border: Border(top: BorderSide(color: c.border))),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Text('WEEKLY TO-DO', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                          color: c.textMuted, letterSpacing: 1)),
+                        Text('$doneTodos/${widget.weeklyTodos.length}',
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: c.primary)),
+                      ])),
+                    ...widget.weeklyTodos.map((t) => GestureDetector(
+                      onTap: () => _toggleTodo(t),
+                      child: Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+                        child: Row(children: [
+                          Container(width: 13, height: 13,
+                            decoration: BoxDecoration(
+                              color: t.done ? c.primary : Colors.transparent,
+                              border: Border.all(color: t.done ? c.primary : c.border, width: 1.2),
+                              borderRadius: BorderRadius.circular(3)),
+                            child: t.done ? const Icon(Icons.check, size: 8, color: Colors.white) : null),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(t.text, style: TextStyle(fontSize: 11,
+                            color: t.done ? c.textMuted : c.textPrimary,
+                            decoration: t.done ? TextDecoration.lineThrough : null,
+                            decorationColor: c.textMuted), overflow: TextOverflow.ellipsis)),
+                        ]),
                       ),
-                      const SizedBox(height: 3),
-
-                      // Habit rows
-                      ...widget.habits.asMap().entries.map((he) {
-                        final hi = he.key; final h = he.value;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                          child: LayoutBuilder(builder: (ctx, cons) {
-                            const nameW = 0.52;
-                            final boxW  = cons.maxWidth * (1 - nameW) / 7;
-                            return Row(children: [
-                              SizedBox(
-                                width: cons.maxWidth * nameW,
-                                child: Text(h.name,
-                                  style: TextStyle(fontSize: 10, color: c.textPrimary),
-                                  overflow: TextOverflow.ellipsis),
-                              ),
-                              ...List.generate(7, (di) => GestureDetector(
-                                onTap: () => _toggleHabit(hi, di),
-                                child: SizedBox(
-                                  width: boxW,
-                                  child: Center(child: Container(
-                                    width: 13, height: 13,
-                                    decoration: BoxDecoration(
-                                      color: h.days[di]
-                                        ? (isColorful ? _dayAccents[di] : c.primary)
-                                        : Colors.transparent,
-                                      border: Border.all(
-                                        color: h.days[di]
-                                          ? (isColorful ? _dayAccents[di] : c.primary)
-                                          : c.border,
-                                        width: 1.2),
-                                      borderRadius: BorderRadius.circular(3)),
-                                    child: h.days[di]
-                                      ? const Icon(Icons.check, size: 8, color: Colors.white)
-                                      : null,
-                                  )),
-                                ),
-                              )),
-                            ]);
-                          }),
-                        );
-                      }),
-
-                      // Weekly To-Do
-                      Container(
-                        margin: const EdgeInsets.only(top: 12),
-                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
-                        decoration: BoxDecoration(border: Border(top: BorderSide(color: c.border))),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('WEEKLY TO-DO',
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                                color: c.textMuted, letterSpacing: 1)),
-                            Text('$doneTodos/${widget.weeklyTodos.length}',
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: c.primary)),
-                          ],
-                        ),
-                      ),
-                      ...widget.weeklyTodos.map((t) => GestureDetector(
-                        onTap: () => _toggleTodo(t),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
-                          child: Row(children: [
-                            Container(
-                              width: 13, height: 13,
-                              decoration: BoxDecoration(
-                                color: t.done ? c.primary : Colors.transparent,
-                                border: Border.all(color: t.done ? c.primary : c.border, width: 1.2),
-                                borderRadius: BorderRadius.circular(3)),
-                              child: t.done
-                                ? const Icon(Icons.check, size: 8, color: Colors.white)
-                                : null,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(child: Text(t.text,
-                              style: TextStyle(fontSize: 11,
-                                color: t.done ? c.textMuted : c.textPrimary,
-                                decoration: t.done ? TextDecoration.lineThrough : null,
-                                decorationColor: c.textMuted),
-                              overflow: TextOverflow.ellipsis)),
-                          ]),
-                        ),
-                      )),
-                      const SizedBox(height: 16),
-                    ],
-                  ),
+                    )),
+                    const SizedBox(height: 16),
+                  ],
                 ),
               ),
+            ),
 
-              // ── DAY COLUMNS ──────────────────────────────────────
-              ...List.generate(7, (di) {
-                final data      = widget.week[di]!;
-                final accent    = isColorful ? _dayAccents[di] : c.primary;
-                final date      = _weekStart.add(Duration(days: di));
-                final doneTasks = data.tasks.where((t) => t.done).length;
-
-                return SizedBox(
-                  width: dayW,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border(right: BorderSide(color: c.border))),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-
-                        // Day header
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            // Day columns
+            ...List.generate(7, (di) {
+              final data      = widget.week[di]!;
+              final accent    = isColorful ? _dayAccents[di] : c.primary;
+              final date      = _weekStart.add(Duration(days: di));
+              final doneTasks = data.tasks.where((t) => t.done).length;
+              return SizedBox(width: dayW, child: Container(
+                decoration: BoxDecoration(border: Border(right: BorderSide(color: c.border))),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Container(width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                    decoration: BoxDecoration(color: accent.withOpacity(0.15),
+                      border: Border(bottom: BorderSide(color: c.border))),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(_short[di], style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                        color: accent, letterSpacing: 0.8)),
+                      Text('${_mn(date.month)} ${date.day}',
+                        style: TextStyle(fontSize: 9, color: c.textMuted)),
+                    ])),
+                  Container(width: double.infinity, padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(color: accent.withOpacity(0.07),
+                      border: Border(bottom: BorderSide(color: c.border))),
+                    child: Text(data.focus, style: TextStyle(fontSize: 9, color: accent,
+                      fontStyle: FontStyle.italic, fontWeight: FontWeight.w500))),
+                  Padding(padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
+                    child: Text('EVENTS', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
+                      color: c.textMuted, letterSpacing: 0.8))),
+                  if (data.events.isEmpty)
+                    Padding(padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+                      child: Text('—', style: TextStyle(fontSize: 10, color: c.textMuted)))
+                  else
+                    ...data.events.map((e) => Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 0, 6, 4),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(width: 3, height: 3, margin: const EdgeInsets.only(top: 4, right: 4),
+                          decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(e.time, style: TextStyle(fontSize: 8, color: c.textMuted)),
+                          Text(e.title, style: TextStyle(fontSize: 9, color: c.textPrimary),
+                            overflow: TextOverflow.ellipsis, maxLines: 2),
+                        ])),
+                      ]),
+                    )),
+                  Container(padding: const EdgeInsets.fromLTRB(6, 6, 6, 3),
+                    decoration: BoxDecoration(border: Border(top: BorderSide(color: c.border))),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Text('TASKS', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
+                        color: c.textMuted, letterSpacing: 0.8)),
+                      Text('$doneTasks/${data.tasks.length}',
+                        style: TextStyle(fontSize: 8, color: accent, fontWeight: FontWeight.w600)),
+                    ])),
+                  Padding(padding: const EdgeInsets.fromLTRB(6, 0, 6, 4),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: data.tasks.isEmpty ? 0 : doneTasks / data.tasks.length,
+                        minHeight: 3, color: accent, backgroundColor: c.border))),
+                  ...data.tasks.map((t) => GestureDetector(
+                    onTap: () => _toggleDayTask(di, t),
+                    child: Padding(padding: const EdgeInsets.fromLTRB(6, 0, 6, 5),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(width: 12, height: 12, margin: const EdgeInsets.only(top: 1),
                           decoration: BoxDecoration(
-                            color: accent.withOpacity(0.15),
-                            border: Border(bottom: BorderSide(color: c.border))),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(_short[di],
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                                color: accent, letterSpacing: 0.8)),
-                            Text('${_mn(date.month)} ${date.day}',
-                              style: TextStyle(fontSize: 9, color: c.textMuted)),
-                          ]),
-                        ),
-
-                        // Focus
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: accent.withOpacity(0.07),
-                            border: Border(bottom: BorderSide(color: c.border))),
-                          child: Text(data.focus,
-                            style: TextStyle(fontSize: 9, color: accent,
-                              fontStyle: FontStyle.italic, fontWeight: FontWeight.w500)),
-                        ),
-
-                        // Events
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
-                          child: Text('EVENTS',
-                            style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
-                              color: c.textMuted, letterSpacing: 0.8)),
-                        ),
-                        if (data.events.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
-                            child: Text('—', style: TextStyle(fontSize: 10, color: c.textMuted)))
-                        else
-                          ...data.events.map((e) => Padding(
-                            padding: const EdgeInsets.fromLTRB(6, 0, 6, 4),
-                            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Container(width: 3, height: 3,
-                                margin: const EdgeInsets.only(top: 4, right: 4),
-                                decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
-                              Expanded(child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(e.time,
-                                    style: TextStyle(fontSize: 8, color: c.textMuted)),
-                                  Text(e.title,
-                                    style: TextStyle(fontSize: 9, color: c.textPrimary),
-                                    overflow: TextOverflow.ellipsis, maxLines: 2),
-                                ],
-                              )),
-                            ]),
-                          )),
-
-                        // Tasks
-                        Container(
-                          padding: const EdgeInsets.fromLTRB(6, 6, 6, 3),
-                          decoration: BoxDecoration(border: Border(top: BorderSide(color: c.border))),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('TASKS',
-                                style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
-                                  color: c.textMuted, letterSpacing: 0.8)),
-                              Text('$doneTasks/${data.tasks.length}',
-                                style: TextStyle(fontSize: 8, color: accent, fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 0, 6, 4),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(2),
-                            child: LinearProgressIndicator(
-                              value: data.tasks.isEmpty ? 0 : doneTasks / data.tasks.length,
-                              minHeight: 3, color: accent, backgroundColor: c.border),
-                          ),
-                        ),
-                        ...data.tasks.map((t) => GestureDetector(
-                          onTap: () => _toggleDayTask(di, t),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(6, 0, 6, 5),
-                            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Container(
-                                width: 12, height: 12,
-                                margin: const EdgeInsets.only(top: 1),
-                                decoration: BoxDecoration(
-                                  color: t.done ? accent : Colors.transparent,
-                                  border: Border.all(color: t.done ? accent : c.border, width: 1.1),
-                                  borderRadius: BorderRadius.circular(3)),
-                                child: t.done
-                                  ? const Icon(Icons.check, size: 7, color: Colors.white)
-                                  : null,
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(child: Text(t.text,
-                                style: TextStyle(fontSize: 10,
-                                  color: t.done ? c.textMuted : c.textPrimary,
-                                  decoration: t.done ? TextDecoration.lineThrough : null,
-                                  decorationColor: c.textMuted))),
-                            ]),
-                          ),
-                        )),
-                        const SizedBox(height: 10),
-                      ],
+                            color: t.done ? accent : Colors.transparent,
+                            border: Border.all(color: t.done ? accent : c.border, width: 1.1),
+                            borderRadius: BorderRadius.circular(3)),
+                          child: t.done ? const Icon(Icons.check, size: 7, color: Colors.white) : null),
+                        const SizedBox(width: 4),
+                        Expanded(child: Text(t.text, style: TextStyle(fontSize: 10,
+                          color: t.done ? c.textMuted : c.textPrimary,
+                          decoration: t.done ? TextDecoration.lineThrough : null,
+                          decorationColor: c.textMuted))),
+                      ]),
                     ),
-                  ),
-                );
-              }),
-            ],
+                  )),
+                  const SizedBox(height: 10),
+                ]),
+              ));
+            }),
+          ],
         ),
       ),
     );
   }
 
-  Widget _dateChip(ThemeColors c, String label, String value, double parentW) {
-    return Container(
-      width: double.infinity,
+  Widget _dateChip(ThemeColors c, String label, String value, double parentW) =>
+    Container(width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: c.primaryLight,
-        borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: c.primaryLight, borderRadius: BorderRadius.circular(8)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label,
-          style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
-            color: c.textMuted, letterSpacing: 0.8)),
+        Text(label, style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
+          color: c.textMuted, letterSpacing: 0.8)),
         const SizedBox(height: 2),
-        Text(value,
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c.textPrimary),
+        Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c.textPrimary),
           overflow: TextOverflow.ellipsis),
-      ]),
-    );
+      ]));
+
+  @override
+  Widget build(BuildContext ctx) {
+    final c    = colorsOf(ctx);
+    final wide = MediaQuery.of(ctx).size.width >= kMobileBreak;
+    return wide ? _buildDesktop(ctx, c) : _buildMobileDay(ctx, c);
   }
 }
 
