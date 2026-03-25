@@ -122,21 +122,99 @@ class _MainShellState extends State<MainShell> {
     Icons.calendar_month_outlined, Icons.flag_outlined, Icons.settings_outlined,
   ];
 
-  @override
+@override
   Widget build(BuildContext ctx) {
-    final c = colorsOf(ctx);
-    final pages = [
+    final c       = colorsOf(ctx);
+    final wide    = MediaQuery.of(ctx).size.width >= kMobileBreak;
+    final pages   = [
       DashboardPage(user: _user, goals: _goals, onGoalTap: _goToGoal, onAdd: _goToAdd),
       WeeklyPage(
         week: _week, habits: _habits, weeklyTodos: _weeklyTodos,
         onTodosChanged: (t) => setState(() => _weeklyTodos = t),
         onWeekChanged:  (d, data) => setState(() => _week[d] = data),
       ),
-      CalendarPage(goals: _goals, week: _week, onEventAdded: _onEventAdded, onEventEdited: _onEventEdited, onEventDeleted: _onEventDeleted), // ← updated
+      CalendarPage(
+        goals: _goals, week: _week,
+        onEventAdded: _onEventAdded,
+        onEventEdited: _onEventEdited,
+        onEventDeleted: _onEventDeleted,
+      ),
       GoalsListPage(goals: _goals, onGoalTap: _goToGoal, onAdd: _goToAdd),
       SettingsPage(user: _user, onUserChanged: (u) => setState(() => _user = u)),
     ];
 
+    const labels = ['Dashboard', 'Weekly', 'Calendar', 'Goals', 'Settings'];
+    const icons  = [
+      Icons.grid_view_rounded, Icons.view_week_outlined,
+      Icons.calendar_month_outlined, Icons.flag_outlined, Icons.settings_outlined,
+    ];
+
+    // ── Desktop layout: persistent left sidebar ──────────────
+    if (wide) {
+      return Scaffold(
+        backgroundColor: c.background,
+        body: Row(
+          children: [
+            // Sidebar
+            Container(
+              width: 200,
+              decoration: BoxDecoration(
+                color: c.surface,
+                border: Border(right: BorderSide(color: c.border)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // App title / logo area
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
+                    child: Text('Goal Manager',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                        color: c.primary)),
+                  ),
+                  Divider(height: 1, color: c.border),
+                  const SizedBox(height: 8),
+                  // Nav items
+                  ...List.generate(5, (i) {
+                    final sel = _tab == i;
+                    return GestureDetector(
+                      onTap: () => setState(() => _tab = i),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        decoration: BoxDecoration(
+                          color: sel ? c.primaryLight : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(children: [
+                          Icon(icons[i], size: 18,
+                            color: sel ? c.primary : c.textMuted),
+                          const SizedBox(width: 12),
+                          Text(labels[i],
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500,
+                              color: sel ? c.primary : c.textMuted)),
+                        ]),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            // Main content — centered + constrained
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: kMaxWidth),
+                  child: pages[_tab],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── Mobile layout: bottom nav bar (unchanged) ────────────
     return Scaffold(
       body: pages[_tab],
       bottomNavigationBar: NavigationBar(
@@ -146,13 +224,14 @@ class _MainShellState extends State<MainShell> {
         indicatorColor: c.primaryLight,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: List.generate(5, (i) => NavigationDestination(
-          icon: Icon(_icons[i], color: c.textMuted),
-          selectedIcon: Icon(_icons[i], color: c.primary),
-          label: _labels[i],
+          icon: Icon(icons[i], color: c.textMuted),
+          selectedIcon: Icon(icons[i], color: c.primary),
+          label: labels[i],
         )),
       ),
     );
   }
+
 
   void _goToGoal(Goal g) => Navigator.push(context,
     MaterialPageRoute(builder: (_) => GoalDetailPage(goal: g, onUpdate: _upsertGoal)));
@@ -173,7 +252,8 @@ class AppBar2 extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext ctx) {
-    final c = colorsOf(ctx);
+    final c    = colorsOf(ctx);
+    final wide = MediaQuery.of(ctx).size.width >= kMobileBreak;
     return AppBar(
       backgroundColor: c.surface,
       elevation: 0,
@@ -182,11 +262,11 @@ class AppBar2 extends StatelessWidget implements PreferredSizeWidget {
               icon: Icon(Icons.arrow_back, color: c.primary),
               onPressed: () => Navigator.pop(ctx),
             )
-          : null,
-      title: Text(
-        title,
-        style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.w500, fontSize: 18),
-      ),
+          : (wide ? const SizedBox.shrink() : null),
+      // On desktop hide the hamburger / leading space cleanly
+      automaticallyImplyLeading: !wide,
+      title: Text(title,
+        style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.w500, fontSize: 18)),
       actions: actions,
     );
   }
@@ -366,6 +446,28 @@ Widget inputField(
   );
 }
 
+const double kMobileBreak  = 600;
+const double kMaxWidth     = 900;  // max content width on desktop
+
+class Responsive extends StatelessWidget {
+  final Widget child;
+  const Responsive({super.key, required this.child});
+
+  static bool isDesktop(BuildContext ctx) =>
+      MediaQuery.of(ctx).size.width >= kMobileBreak;
+
+  @override
+  Widget build(BuildContext ctx) {
+    final wide = MediaQuery.of(ctx).size.width >= kMobileBreak;
+    if (!wide) return child;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: kMaxWidth),
+        child: child,
+      ),
+    );
+  }
+}
 // ─── Goal Card ────────────────────────────────────────────────────────────────
 
 class GoalCard extends StatelessWidget {
@@ -504,7 +606,7 @@ class DashboardPage extends StatelessWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 28 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -623,12 +725,13 @@ class _WeeklyPageState extends State<WeeklyPage> {
   Widget build(BuildContext ctx) {
     final c          = colorsOf(ctx);
     final isColorful = AppThemeNotifier.of(ctx).value == AppTheme.colorful;
-    final screenW    = MediaQuery.of(ctx).size.width;
-
+    
+final double availableW = MediaQuery.of(ctx).size.width >= kMobileBreak
+    ? MediaQuery.of(ctx).size.width - 200  // subtract sidebar width
+    : MediaQuery.of(ctx).size.width;
+final double leftW = availableW * 0.275;
+final double dayW  = (availableW - leftW) / 7;
     // Left column = 27.5% of screen width (was ~220px fixed)
-    final leftW  = screenW * 0.275;
-    // 7 day columns share the remaining 72.5%
-    final dayW   = (screenW - leftW) / 7;
 
     final totalChecks = widget.habits.fold(0, (s, h) => s + h.days.where((d) => d).length);
     final maxChecks   = widget.habits.length * 7;
@@ -1207,7 +1310,7 @@ bool _hasEvent(DateTime d) => _eventsForDay(d).isNotEmpty;
 // Selected day detail
             if (_sel != null)
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 28 : 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1389,7 +1492,7 @@ class _GoalsListPageState extends State<GoalsListPage> {
           ),
           Expanded(
             child: ListView.separated(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 28 : 16),
               itemCount: shown.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (_, i) => GoalCard(goal: shown[i], onTap: () => widget.onGoalTap(shown[i])),
@@ -1437,7 +1540,7 @@ class _GoalDetailState extends State<GoalDetailPage> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 32 : 20),
         child: Column(
           children: [
             SizedBox(
@@ -1583,7 +1686,7 @@ class _AddGoalPageState extends State<AddGoalPage> {
       backgroundColor: c.background,
       appBar: AppBar2(title: widget.existing != null ? 'Edit Goal' : 'Add Goal', showBack: true),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 32 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1709,11 +1812,12 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool weekly = true, deadlines = true, passcode = false, biometric = true;
 
-  static const _themeLabels = ['Light', 'Dark', 'Colorful', 'MAN*LY'];
-  static const _themeIcons  = [
-    Icons.wb_sunny_outlined, Icons.nightlight_outlined,
-    Icons.palette_outlined,  Icons.bolt_outlined,
-  ];
+static const _themeLabels = ['Light', 'Dark', 'Colorful', 'MAN*LY', 'Pink', 'Kelly'];
+static const _themeIcons  = [
+  Icons.wb_sunny_outlined,  Icons.nightlight_outlined,
+  Icons.palette_outlined,   Icons.bolt_outlined,
+  Icons.favorite_outline,   Icons.business_outlined,
+];
 
   void _openEditProfile() async {
     final updated = await Navigator.push<UserProfile>(
@@ -1734,7 +1838,7 @@ class _SettingsPageState extends State<SettingsPage> {
       backgroundColor: c.background,
       appBar: AppBar2(title: 'Settings'),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 28 : 16),
         child: Column(
           children: [
             // Profile card
@@ -1781,8 +1885,8 @@ class _SettingsPageState extends State<SettingsPage> {
               builder: (ctx, currentTheme, _) => GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 2.8,
-                children: List.generate(4, (i) {
+                crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 2.4,
+                children: List.generate(6, (i) {
                   final t   = allThemeEnums[i];
                   final tc  = allThemes[i];
                   final sel = currentTheme == t;
@@ -1900,7 +2004,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       backgroundColor: c.background,
       appBar: AppBar2(title: 'Edit Profile', showBack: true),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 32 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2099,7 +2203,7 @@ class EventDetailPage extends StatelessWidget {
       backgroundColor: c.background,
       appBar: AppBar2(title: 'Event Details', showBack: true),
       body: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 32 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2315,7 +2419,7 @@ class _AddEventPageState extends State<AddEventPage> {
         showBack: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 32 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 // ─── Theme Definitions ────────────────────────────────────────────────────────
 
-enum AppTheme { light, dark, colorful, manly }
+enum AppTheme { light, dark, colorful, manly, pink, kelly }
 
 class ThemeColors {
   final String name;
@@ -91,8 +91,35 @@ const manlyTheme = ThemeColors(
   danger:       Color(0xFFE05555),
 );
 
-const allThemes     = [lightTheme, darkTheme, colorfulTheme, manlyTheme];
-const allThemeEnums = [AppTheme.light, AppTheme.dark, AppTheme.colorful, AppTheme.manly];
+const pinkTheme = ThemeColors(
+  name: 'Pink',
+  primary:      Color(0xFFFF69B4),  // hot pink
+  primaryLight: Color(0xFFFFE4F0),  // light pink
+  primaryDark:  Color(0xFFE91E8C),  // deep pink
+  background:   Color(0xFFFFF0F6),  // blush white
+  surface:      Color(0xFFFFFFFF),
+  border:       Color(0xFFFFB6D9),  // soft pink border
+  textPrimary:  Color(0xFF3A1A2A),  // deep plum text
+  textMuted:    Color(0xFFB07090),  // muted rose
+  danger:       Color(0xFFE53935),
+);
+
+const kellyTheme = ThemeColors(
+  name: 'Kelly',
+  primary:      Color(0xFF00B140),  // Kelly brand green
+  primaryLight: Color(0xFFE6F9ED),  // light mint
+  primaryDark:  Color(0xFF008C32),  // deep Kelly green
+  background:   Color(0xFFF5FDF7),  // near white with green tint
+  surface:      Color(0xFFFFFFFF),
+  border:       Color(0xFFB3E6C3),  // soft green border
+  textPrimary:  Color(0xFF0A2614),  // very dark green
+  textMuted:    Color(0xFF4D7A5A),  // muted mid green
+  danger:       Color(0xFFD32F2F),
+);
+
+const allThemes     = [lightTheme, darkTheme, colorfulTheme, manlyTheme, pinkTheme, kellyTheme];
+const allThemeEnums = [AppTheme.light, AppTheme.dark, AppTheme.colorful, AppTheme.manly, AppTheme.pink, AppTheme.kelly];
+
 
 // ─── Theme Notifier ───────────────────────────────────────────────────────────
 
