@@ -78,7 +78,7 @@ class _SignInPageState extends State<SignInPage> {
                     child: CustomPaint(
                       painter: _RingCheckPainter(c.border, c.primary))))),
                 const SizedBox(height: 16),
-                Text('Goal Manager', style: TextStyle(fontSize: 24,
+                Text('Goal*ly', style: TextStyle(fontSize: 24,
                   fontWeight: FontWeight.w700, color: c.textPrimary)),
                 const SizedBox(height: 6),
                 Text('Sign in to continue',

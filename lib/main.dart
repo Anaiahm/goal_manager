@@ -23,7 +23,7 @@ class _GoalManagerAppState extends State<GoalManagerApp> {
 
   static final Map<String, UserProfile> _accounts = {
     'demo@goalmanager.app': UserProfile(
-      name: 'Anaiah',
+      name: 'Demo User',
       email: 'demo@goalmanager.app',
       password: 'password123',
       avatarColorIndex: 0,
@@ -68,7 +68,7 @@ class _GoalManagerAppState extends State<GoalManagerApp> {
           final c      = allThemes[allThemeEnums.indexOf(theme)];
           final isDark = theme == AppTheme.dark || theme == AppTheme.manly;
           return MaterialApp(
-            title: 'Goal Manager',
+            title: 'Goal*ly',
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               brightness: isDark ? Brightness.dark : Brightness.light,
@@ -251,7 +251,7 @@ class _MainShellState extends State<MainShell> {
                   // App title / logo area
                   Container(
                     padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
-                    child: Text('Goal Manager',
+                    child: Text('Goal*ly',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
                         color: c.primary)),
                   ),
