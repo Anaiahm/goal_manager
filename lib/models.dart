@@ -96,8 +96,8 @@ const pinkTheme = ThemeColors(
   primary:      Color(0xFFFF69B4),  // hot pink
   primaryLight: Color(0xFFFFE4F0),  // light pink
   primaryDark:  Color(0xFFE91E8C),  // deep pink
-  background:   Color(0xFFFFF0F6),  // blush white
-  surface:      Color(0xFFFFFFFF),
+  background:   Color(0xFFFDF5F0),
+  surface:      Color(0xFFFAE8E0),
   border:       Color(0xFFFFB6D9),  // soft pink border
   textPrimary:  Color(0xFF3A1A2A),  // deep plum text
   textMuted:    Color(0xFFB07090),  // muted rose
@@ -145,18 +145,22 @@ class UserProfile {
   final String name;
   final String email;
   final String password;
+  final int avatarColorIndex;
 
   const UserProfile({
     required this.name,
     required this.email,
     required this.password,
+    this.avatarColorIndex = 0,
   });
 
-  UserProfile copyWith({String? name, String? email, String? password}) => UserProfile(
-    name:     name     ?? this.name,
-    email:    email    ?? this.email,
-    password: password ?? this.password,
-  );
+  UserProfile copyWith({String? name, String? email, String? password, int? avatarColorIndex}) =>
+    UserProfile(
+      name:             name             ?? this.name,
+      email:            email            ?? this.email,
+      password:         password         ?? this.password,
+      avatarColorIndex: avatarColorIndex ?? this.avatarColorIndex,
+    );
 
   String get initials {
     final parts = name.trim().split(' ');
@@ -239,10 +243,57 @@ class HabitEntry {
 
 // ─── Sample Data ──────────────────────────────────────────────────────────────
 
+List<Goal> starterGoals() => [
+  Goal(
+    id: 1,
+    name: 'Goal-ly 101',
+    type: 'Personal',
+    target: 5,
+    saved: 0,
+    deadline: _fmtDate(DateTime.now().add(const Duration(days: 30))),
+    tasks: [
+      GoalTask(id: 1, text: 'Watch demo video'),
+      GoalTask(id: 2, text: 'Add first goal'),
+      GoalTask(id: 3, text: 'Change theme'),
+      GoalTask(id: 4, text: 'Add first event'),
+      GoalTask(id: 5, text: 'Complete Goal-ly 101!'),
+    ],
+  ),
+];
+
+Map<int, DayData> starterWeek(DateTime joinDate) {
+  final monday = joinDate.subtract(Duration(days: joinDate.weekday - 1));
+  final joinWeekday = joinDate.weekday - 1; // 0=Mon … 6=Sun
+
+  return Map.fromEntries(List.generate(7, (di) {
+    final dayDate = monday.add(Duration(days: di));
+    return MapEntry(di, DayData(
+      focus: di == joinWeekday ? 'Welcome to Goal-ly! 🎉' : 'A fresh start awaits.',
+      events: di == joinWeekday
+        ? [DayEvent('All day', 'The First Day of Forever', joinDate)]
+        : [],
+      tasks: [],
+    ));
+  }));
+}
+
+// Helper used above — formats DateTime to yyyy-MM-dd string
+String _fmtDate(DateTime d) =>
+  '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+List<GoalTask> starterWeeklyTodos() => [
+  GoalTask(id: 1, text: 'Watch demo video'),
+  GoalTask(id: 2, text: 'Add first goal'),
+  GoalTask(id: 3, text: 'Change theme'),
+  GoalTask(id: 4, text: 'Add first event'),
+  GoalTask(id: 5, text: 'Complete Goal-ly 101!'),
+];
+
 const defaultUser = UserProfile(
-  name:     'Jenny Wilson',
-  email:    'jennywilson@gmail.com',
+  name:     'Test User',
+  email:    'testuser@gmail.com',
   password: 'password123',
+  avatarColorIndex: 0,
 );
 
 List<Goal> sampleGoals() => [

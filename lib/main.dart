@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
+import 'auth.dart';   
 
 void main() => runApp(const GoalManagerApp());
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
+
 
 class GoalManagerApp extends StatefulWidget {
   const GoalManagerApp({super.key});
@@ -11,8 +13,50 @@ class GoalManagerApp extends StatefulWidget {
   State<GoalManagerApp> createState() => _GoalManagerAppState();
 }
 
+
+
 class _GoalManagerAppState extends State<GoalManagerApp> {
   final _themeNotifier = ValueNotifier<AppTheme>(AppTheme.light);
+  UserProfile? _user;
+  bool _isNewUser = false;
+  DateTime? _joinDate;
+
+  static final Map<String, UserProfile> _accounts = {
+    'demo@goalmanager.app': UserProfile(
+      name: 'Anaiah',
+      email: 'demo@goalmanager.app',
+      password: 'password123',
+      avatarColorIndex: 0,
+    ),
+  };
+
+  // Tracks emails that just registered this session
+  static final Set<String> _newlyRegistered = {};
+
+  void _onAuthenticated(UserProfile user, AppTheme theme) {
+    final email    = user.email.toLowerCase();
+    final isNew    = _newlyRegistered.contains(email);
+    final joinDate = isNew ? DateTime.now() : null;
+    if (isNew) _newlyRegistered.remove(email); // consume the flag
+    setState(() {
+      _user        = user;
+      _isNewUser   = isNew;
+      _joinDate    = joinDate;
+      _themeNotifier.value = theme;
+    });
+  }
+
+  void _onRegistered(UserProfile user, AppTheme theme) {
+    final email = user.email.toLowerCase();
+    _accounts[email] = user;
+    _newlyRegistered.add(email); // mark as new so sign-in knows
+  }
+
+  void _onLogOut() => setState(() {
+    _user      = null;
+    _isNewUser = false;
+    _joinDate  = null;
+  });
 
   @override
   Widget build(BuildContext ctx) {
@@ -21,7 +65,7 @@ class _GoalManagerAppState extends State<GoalManagerApp> {
       child: ValueListenableBuilder<AppTheme>(
         valueListenable: _themeNotifier,
         builder: (ctx, theme, _) {
-          final c = allThemes[allThemeEnums.indexOf(theme)];
+          final c      = allThemes[allThemeEnums.indexOf(theme)];
           final isDark = theme == AppTheme.dark || theme == AppTheme.manly;
           return MaterialApp(
             title: 'Goal Manager',
@@ -30,12 +74,25 @@ class _GoalManagerAppState extends State<GoalManagerApp> {
               brightness: isDark ? Brightness.dark : Brightness.light,
               colorScheme: ColorScheme.fromSeed(
                 seedColor: c.primary,
-                brightness: isDark ? Brightness.dark : Brightness.light,
-              ),
+                brightness: isDark ? Brightness.dark : Brightness.light),
               scaffoldBackgroundColor: c.background,
               useMaterial3: true,
             ),
-            home: const MainShell(),
+            home: _user == null
+              ? SignInPage(
+                  accounts: _accounts,
+                  onSignIn: (user, theme, remember) =>
+                    _onAuthenticated(user, theme),
+                  onRegistered: _onRegistered,
+                )
+              : MainShell(
+                  user: _user!,
+                  initialTheme: _themeNotifier,
+                  accounts: _accounts,
+                  onLogOut: _onLogOut,
+                  isNewUser: _isNewUser,
+                  joinDate: _joinDate,
+                ),
           );
         },
       ),
@@ -43,21 +100,47 @@ class _GoalManagerAppState extends State<GoalManagerApp> {
   }
 }
 
+
 // ─── Main Shell ───────────────────────────────────────────────────────────────
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  final UserProfile user;
+  final ValueNotifier<AppTheme> initialTheme;
+  final Map<String, UserProfile> accounts;
+  final VoidCallback onLogOut;
+  final bool isNewUser;
+  final DateTime? joinDate;
+  const MainShell({super.key, required this.user, required this.initialTheme, required this.accounts, required this.onLogOut, this.isNewUser = false, this.joinDate});
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> {
   int _tab = 0;
-  List<Goal> _goals = sampleGoals();
-  final Map<int, DayData> _week = sampleWeek();
-  final List<HabitEntry> _habits = sampleHabits();
-  late List<GoalTask> _weeklyTodos = sampleWeeklyTodos();
-  UserProfile _user = defaultUser;
+  late List<Goal> _goals;
+  late Map<int, DayData> _week;
+  late List<HabitEntry> _habits;
+  late List<GoalTask> _weeklyTodos;
+  late UserProfile _user;
+
+  @override
+  void initState() {
+    super.initState();
+    _user = widget.user;
+    final joined = widget.joinDate ?? DateTime.now();
+    if (widget.isNewUser) {
+      // New user gets personalized starter content
+      _goals        = starterGoals();
+      _week         = starterWeek(joined);
+      _weeklyTodos  = starterWeeklyTodos();
+    } else {
+      // Returning user gets sample data (replace with persisted data later)
+      _goals        = sampleGoals();
+      _week         = sampleWeek();
+      _weeklyTodos  = sampleWeeklyTodos();
+    }
+    _habits = sampleHabits();
+  }
 
   void _upsertGoal(Goal g) => setState(() {
     final i = _goals.indexWhere((x) => x.id == g.id);
@@ -140,7 +223,7 @@ class _MainShellState extends State<MainShell> {
         onEventDeleted: _onEventDeleted,
       ),
       GoalsListPage(goals: _goals, onGoalTap: _goToGoal, onAdd: _goToAdd),
-      SettingsPage(user: _user, onUserChanged: (u) => setState(() => _user = u)),
+      SettingsPage(user: _user, accounts: widget.accounts, onUserChanged: (u) => setState(() => _user = u), onLogOut: widget.onLogOut,),
     ];
 
     const labels = ['Dashboard', 'Weekly', 'Calendar', 'Goals', 'Settings'];
@@ -1864,8 +1947,16 @@ class _AddGoalPageState extends State<AddGoalPage> {
 
 class SettingsPage extends StatefulWidget {
   final UserProfile user;
+  final Map<String, UserProfile> accounts;
   final void Function(UserProfile) onUserChanged;
-  const SettingsPage({super.key, required this.user, required this.onUserChanged});
+  final VoidCallback onLogOut;
+  const SettingsPage({
+    super.key,
+    required this.user,
+    required this.accounts,
+    required this.onUserChanged,
+    required this.onLogOut,
+  });
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
@@ -1873,21 +1964,44 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool weekly = true, deadlines = true, passcode = false, biometric = true;
 
-static const _themeLabels = ['Light', 'Dark', 'Colorful', 'MAN*LY', 'Pink', 'Kelly'];
-static const _themeIcons  = [
-  Icons.wb_sunny_outlined,  Icons.nightlight_outlined,
-  Icons.palette_outlined,   Icons.bolt_outlined,
-  Icons.favorite_outline,   Icons.business_outlined,
-];
+  static const _themeLabels = ['Light', 'Dark', 'Colorful', 'MAN*LY', 'Pink', 'Kelly'];
+  static const _themeIcons  = [
+    Icons.wb_sunny_outlined,  Icons.nightlight_outlined,
+    Icons.palette_outlined,   Icons.bolt_outlined,
+    Icons.favorite_outline,   Icons.business_outlined,
+  ];
 
   void _openEditProfile() async {
     final updated = await Navigator.push<UserProfile>(
       context,
-      MaterialPageRoute(
-        builder: (_) => EditProfilePage(user: widget.user),
-      ),
+      MaterialPageRoute(builder: (_) => EditProfilePage(user: widget.user)),
     );
     if (updated != null) widget.onUserChanged(updated);
+  }
+
+  void _logOut() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.w600)),
+        content: const Text('Are you sure you want to log out?',
+          style: TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);  // close dialog
+              widget.onLogOut();       // tell GoalManagerApp to show sign in
+            },
+            child: const Text('Log Out',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600))),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1902,6 +2016,7 @@ static const _themeIcons  = [
         padding: EdgeInsets.all(Responsive.isDesktop(ctx) ? 28 : 16),
         child: Column(
           children: [
+
             // Profile card
             Card2(
               child: Row(
@@ -1909,10 +2024,8 @@ static const _themeIcons  = [
                   CircleAvatar(
                     radius: 24,
                     backgroundColor: c.primaryLight,
-                    child: Text(
-                      widget.user.initials,
-                      style: TextStyle(color: c.primary, fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
+                    child: Text(widget.user.initials,
+                      style: TextStyle(color: c.primary, fontWeight: FontWeight.w600, fontSize: 14)),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -1958,15 +2071,16 @@ static const _themeIcons  = [
                       decoration: BoxDecoration(
                         color: sel ? tc.primary : c.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: sel ? tc.primary : c.border, width: sel ? 2 : 1),
-                      ),
+                        border: Border.all(color: sel ? tc.primary : c.border, width: sel ? 2 : 1)),
                       child: Row(
                         children: [
                           Icon(_themeIcons[i], size: 18, color: sel ? Colors.white : c.textMuted),
                           const SizedBox(width: 8),
-                          Text(_themeLabels[i],
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
-                              color: sel ? Colors.white : c.textPrimary)),
+                          Expanded(
+                            child: Text(_themeLabels[i],
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
+                                color: sel ? Colors.white : c.textPrimary),
+                              overflow: TextOverflow.ellipsis)),
                         ],
                       ),
                     ),
@@ -1976,21 +2090,29 @@ static const _themeIcons  = [
             ),
             const SizedBox(height: 20),
 
+            // Notifications
             _Section(title: 'Notifications', children: [
               _Tile(label: 'Weekly Summary', c: c,
-                trailing: Switch(value: weekly, onChanged: (v) => setState(() => weekly = v), activeColor: c.primary)),
+                trailing: Switch(value: weekly,
+                  onChanged: (v) => setState(() => weekly = v), activeColor: c.primary)),
               _Tile(label: 'Deadline Reminders', c: c,
-                trailing: Switch(value: deadlines, onChanged: (v) => setState(() => deadlines = v), activeColor: c.primary)),
+                trailing: Switch(value: deadlines,
+                  onChanged: (v) => setState(() => deadlines = v), activeColor: c.primary)),
             ]),
             const SizedBox(height: 16),
+
+            // Security
             _Section(title: 'Security', children: [
               _Tile(label: 'Passcode Lock', c: c,
-                trailing: Switch(value: passcode, onChanged: (v) => setState(() => passcode = v), activeColor: c.primary)),
+                trailing: Switch(value: passcode,
+                  onChanged: (v) => setState(() => passcode = v), activeColor: c.primary)),
               _Tile(label: 'Biometric Unlock', c: c,
-                trailing: Switch(value: biometric, onChanged: (v) => setState(() => biometric = v), activeColor: c.primary)),
+                trailing: Switch(value: biometric,
+                  onChanged: (v) => setState(() => biometric = v), activeColor: c.primary)),
             ]),
             const SizedBox(height: 20),
 
+            // Log out
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
@@ -1998,10 +2120,10 @@ static const _themeIcons  = [
                   foregroundColor: c.danger,
                   side: BorderSide(color: c.border),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: () {},
-                child: const Text('Log Out', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  padding: const EdgeInsets.symmetric(vertical: 14)),
+                onPressed: _logOut,
+                child: const Text('Log Out',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
               ),
             ),
           ],
