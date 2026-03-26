@@ -2,8 +2,17 @@ import 'package:flutter/material.dart';
 import 'models.dart';
 import 'auth.dart'; 
 import 'app_icon.dart';  
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'firebase_service.dart';
 
-void main() => runApp(const GoalManagerApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(const GoalManagerApp());
+}
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
 
@@ -19,45 +28,36 @@ class GoalManagerApp extends StatefulWidget {
 class _GoalManagerAppState extends State<GoalManagerApp> {
   final _themeNotifier = ValueNotifier<AppTheme>(AppTheme.light);
   UserProfile? _user;
-  bool _isNewUser = false;
+  bool _isNewUser   = false;
   DateTime? _joinDate;
 
-  static final Map<String, UserProfile> _accounts = {
-    'demo@goalmanager.app': UserProfile(
-      name: 'Demo User',
-      email: 'demo@goalmanager.app',
-      password: 'password123',
-      avatarIconIndex: 0,
-    ),
-  };
-
-  // Tracks emails that just registered this session
   static final Set<String> _newlyRegistered = {};
 
   void _onAuthenticated(UserProfile user, AppTheme theme) {
-    final email    = user.email.toLowerCase();
-    final isNew    = _newlyRegistered.contains(email);
-    final joinDate = isNew ? DateTime.now() : null;
-    if (isNew) _newlyRegistered.remove(email); // consume the flag
+    final email  = user.email.toLowerCase();
+    final isNew  = _newlyRegistered.contains(email);
+    final joined = isNew ? DateTime.now() : null;
+    if (isNew) _newlyRegistered.remove(email);
     setState(() {
       _user        = user;
       _isNewUser   = isNew;
-      _joinDate    = joinDate;
+      _joinDate    = joined;
       _themeNotifier.value = theme;
     });
   }
 
   void _onRegistered(UserProfile user, AppTheme theme) {
-    final email = user.email.toLowerCase();
-    _accounts[email] = user;
-    _newlyRegistered.add(email); // mark as new so sign-in knows
+    _newlyRegistered.add(user.email.toLowerCase());
   }
 
-  void _onLogOut() => setState(() {
-    _user      = null;
-    _isNewUser = false;
-    _joinDate  = null;
-  });
+  void _onLogOut() async {
+    await FirebaseService.signOut();
+    setState(() {
+      _user      = null;
+      _isNewUser = false;
+      _joinDate  = null;
+    });
+  }
 
   @override
   Widget build(BuildContext ctx) {
@@ -81,18 +81,15 @@ class _GoalManagerAppState extends State<GoalManagerApp> {
             ),
             home: _user == null
               ? SignInPage(
-                  accounts: _accounts,
-                  onSignIn: (user, theme, remember) =>
-                    _onAuthenticated(user, theme),
+                  onSignIn:     (user, theme, remember) => _onAuthenticated(user, theme),
                   onRegistered: _onRegistered,
                 )
               : MainShell(
-                  user: _user!,
+                  user:      _user!,
                   initialTheme: _themeNotifier,
-                  accounts: _accounts,
-                  onLogOut: _onLogOut,
+                  onLogOut:  _onLogOut,
                   isNewUser: _isNewUser,
-                  joinDate: _joinDate,
+                  joinDate:  _joinDate,
                 ),
           );
         },
@@ -107,58 +104,84 @@ class _GoalManagerAppState extends State<GoalManagerApp> {
 class MainShell extends StatefulWidget {
   final UserProfile user;
   final ValueNotifier<AppTheme> initialTheme;
-  final Map<String, UserProfile> accounts;
   final VoidCallback onLogOut;
   final bool isNewUser;
   final DateTime? joinDate;
-  const MainShell({super.key, required this.user, required this.initialTheme, required this.accounts, required this.onLogOut, this.isNewUser = false, this.joinDate});
+  const MainShell({
+    super.key,
+    required this.user,
+    required this.initialTheme,
+    required this.onLogOut,
+    this.isNewUser = false,
+    this.joinDate,
+  });
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> {
   int _tab = 0;
-  late List<Goal> _goals;
-  late Map<int, DayData> _week;
-  late List<HabitEntry> _habits;
-  late List<GoalTask> _weeklyTodos;
-  late UserProfile _user;
+  List<Goal>      _goals       = [];
+  Map<int, DayData> _week      = {};
+  List<HabitEntry>  _habits    = [];
+  List<GoalTask>    _weeklyTodos = [];
+  late UserProfile  _user;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _user = widget.user;
-    final joined = widget.joinDate ?? DateTime.now();
-    if (widget.isNewUser) {
-      // New user gets personalized starter content
-      _goals        = starterGoals();
-      _week         = starterWeek(joined);
-      _weeklyTodos  = starterWeeklyTodos();
-    } else {
-      // Returning user gets sample data (replace with persisted data later)
-      _goals        = sampleGoals();
-      _week         = sampleWeek();
-      _weeklyTodos  = sampleWeeklyTodos();
-    }
-    _habits = sampleHabits();
+    _loadData();
   }
 
-  void _upsertGoal(Goal g) => setState(() {
-    final i = _goals.indexWhere((x) => x.id == g.id);
-    if (i >= 0) { _goals[i] = g; } else { _goals.add(g); }
-  });
+  Future<void> _loadData() async {
+    try {
+      final results = await Future.wait([
+        FirebaseService.loadGoals(),
+        FirebaseService.loadWeek(),
+        FirebaseService.loadHabits(),
+        FirebaseService.loadWeeklyTodos(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _goals       = results[0] as List<Goal>;
+          _week        = results[1] as Map<int, DayData>;
+          _habits      = results[2] as List<HabitEntry>;
+          _weeklyTodos = results[3] as List<GoalTask>;
+          _loading     = false;
+        });
+      }
+    } catch (e) {
+      // Fall back to sample data if Firestore fails
+      if (mounted) {
+        setState(() {
+          _goals       = widget.isNewUser ? starterGoals()       : sampleGoals();
+          _week        = widget.isNewUser ? starterWeek(widget.joinDate ?? DateTime.now()) : sampleWeek();
+          _habits      = sampleHabits();
+          _weeklyTodos = widget.isNewUser ? starterWeeklyTodos() : sampleWeeklyTodos();
+          _loading     = false;
+        });
+      }
+    }
+  }
 
-  // Adds a new event to the correct weekday slot
+  void _upsertGoal(Goal g) {
+    setState(() {
+      final i = _goals.indexWhere((x) => x.id == g.id);
+      if (i >= 0) { _goals[i] = g; } else { _goals.add(g); }
+    });
+    FirebaseService.saveGoal(g); // persist to Firestore
+  }
+
   void _onEventAdded(DayEvent event) {
     setState(() {
-      final weekday = event.date.weekday - 1; // Mon=0 … Sun=6
-      final data    = _week[weekday]!;
-      _week[weekday] = DayData(
-        focus:  data.focus,
-        events: [...data.events, event],
-        tasks:  data.tasks,
-      );
+      final wd   = event.date.weekday - 1;
+      final data = _week[wd]!;
+      _week[wd]  = DayData(focus: data.focus,
+        events: [...data.events, event], tasks: data.tasks);
     });
+    FirebaseService.saveDay(event.date.weekday - 1, _week[event.date.weekday - 1]!);
   }
 
   void _onEventEdited(DayEvent oldEvent, DayEvent newEvent) {
@@ -166,15 +189,15 @@ class _MainShellState extends State<MainShell> {
       for (int di = 0; di < 7; di++) {
         final data = _week[di]!;
         final idx  = data.events.indexWhere((e) =>
-          e.title == oldEvent.title &&
-          e.time  == oldEvent.time  &&
-          e.date.day   == oldEvent.date.day   &&
+          e.title == oldEvent.title && e.time == oldEvent.time &&
+          e.date.day == oldEvent.date.day &&
           e.date.month == oldEvent.date.month &&
-          e.date.year  == oldEvent.date.year);
+          e.date.year == oldEvent.date.year);
         if (idx >= 0) {
           final updated = List<DayEvent>.from(data.events);
-          updated[idx] = newEvent;
+          updated[idx]  = newEvent;
           _week[di] = DayData(focus: data.focus, events: updated, tasks: data.tasks);
+          FirebaseService.saveDay(di, _week[di]!);
           break;
         }
       }
@@ -184,16 +207,15 @@ class _MainShellState extends State<MainShell> {
   void _onEventDeleted(DayEvent event) {
     setState(() {
       for (int di = 0; di < 7; di++) {
-        final data = _week[di]!;
-        final before = data.events.length;
+        final data    = _week[di]!;
         final updated = data.events.where((e) =>
-          !(e.title == event.title &&
-            e.time  == event.time  &&
-            e.date.day   == event.date.day   &&
+          !(e.title == event.title && e.time == event.time &&
+            e.date.day == event.date.day &&
             e.date.month == event.date.month &&
-            e.date.year  == event.date.year)).toList();
-        if (updated.length < before) {
+            e.date.year == event.date.year)).toList();
+        if (updated.length < data.events.length) {
           _week[di] = DayData(focus: data.focus, events: updated, tasks: data.tasks);
+          FirebaseService.saveDay(di, _week[di]!);
           break;
         }
       }
@@ -206,99 +228,95 @@ class _MainShellState extends State<MainShell> {
     Icons.calendar_month_outlined, Icons.flag_outlined, Icons.settings_outlined,
   ];
 
-@override
+  @override
   Widget build(BuildContext ctx) {
-    final c       = colorsOf(ctx);
-    final wide    = MediaQuery.of(ctx).size.width >= kMobileBreak;
-    final pages   = [
-      DashboardPage(user: _user, goals: _goals, onGoalTap: _goToGoal, onAdd: _goToAdd),
-      WeeklyPage(
-        week: _week, habits: _habits, weeklyTodos: _weeklyTodos,
-        onTodosChanged: (t) => setState(() => _weeklyTodos = t),
-        onWeekChanged:  (d, data) => setState(() => _week[d] = data),
-      ),
-      CalendarPage(
-        goals: _goals, week: _week,
-        onEventAdded: _onEventAdded,
-        onEventEdited: _onEventEdited,
-        onEventDeleted: _onEventDeleted,
-      ),
-      GoalsListPage(goals: _goals, onGoalTap: _goToGoal, onAdd: _goToAdd),
-      SettingsPage(user: _user, accounts: widget.accounts, onUserChanged: (u) => setState(() => _user = u), onLogOut: widget.onLogOut,),
-    ];
-
-    const labels = ['Dashboard', 'Weekly', 'Calendar', 'Goals', 'Settings'];
-    const icons  = [
-      Icons.grid_view_rounded, Icons.view_week_outlined,
-      Icons.calendar_month_outlined, Icons.flag_outlined, Icons.settings_outlined,
-    ];
-
-    // ── Desktop layout: persistent left sidebar ──────────────
-    if (wide) {
+    // Show loading spinner while Firestore data loads
+    if (_loading) {
+      final c = colorsOf(ctx);
       return Scaffold(
         backgroundColor: c.background,
-        body: Row(
-          children: [
-            // Sidebar
-            Container(
-              width: 200,
-              decoration: BoxDecoration(
-                color: c.surface,
-                border: Border(right: BorderSide(color: c.border)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // App title / logo area
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
-                    child: Text('Goal*ly',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                        color: c.primary)),
-                  ),
-                  Divider(height: 1, color: c.border),
-                  const SizedBox(height: 8),
-                  // Nav items
-                  ...List.generate(5, (i) {
-                    final sel = _tab == i;
-                    return GestureDetector(
-                      onTap: () => setState(() => _tab = i),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                        decoration: BoxDecoration(
-                          color: sel ? c.primaryLight : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(children: [
-                          Icon(icons[i], size: 18,
-                            color: sel ? c.primary : c.textMuted),
-                          const SizedBox(width: 12),
-                          Text(labels[i],
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500,
-                              color: sel ? c.primary : c.textMuted)),
-                        ]),
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-            // Main content — centered + constrained
-            Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: kMaxWidth),
-                  child: pages[_tab],
-                ),
-              ),
-            ),
-          ],
-        ),
+        body: Center(child: CircularProgressIndicator(color: c.primary)),
       );
     }
 
-    // ── Mobile layout: bottom nav bar (unchanged) ────────────
+    final c    = colorsOf(ctx);
+    final wide = MediaQuery.of(ctx).size.width >= kMobileBreak;
+
+    final pages = [
+      DashboardPage(user: _user, goals: _goals, onGoalTap: _goToGoal, onAdd: _goToAdd),
+      WeeklyPage(
+        week: _week, habits: _habits, weeklyTodos: _weeklyTodos,
+        onTodosChanged: (t) {
+          setState(() => _weeklyTodos = t);
+          FirebaseService.saveWeeklyTodos(t);
+        },
+        onWeekChanged: (d, data) {
+          setState(() => _week[d] = data);
+          FirebaseService.saveDay(d, data);
+        },
+      ),
+      CalendarPage(
+        goals: _goals, week: _week,
+        onEventAdded:   _onEventAdded,
+        onEventEdited:  _onEventEdited,
+        onEventDeleted: _onEventDeleted,
+      ),
+      GoalsListPage(goals: _goals, onGoalTap: _goToGoal, onAdd: _goToAdd),
+      SettingsPage(
+        user:          _user,
+        onUserChanged: (u) {
+          setState(() => _user = u);
+          FirebaseService.updateProfile(u);
+        },
+        onLogOut: widget.onLogOut,
+      ),
+    ];
+
+    if (wide) {
+      return Scaffold(
+        backgroundColor: c.background,
+        body: Row(children: [
+          Container(
+            width: 200,
+            decoration: BoxDecoration(
+              color: c.surface,
+              border: Border(right: BorderSide(color: c.border))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
+                child: Text('Goal*ly',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.primary))),
+              Divider(height: 1, color: c.border),
+              const SizedBox(height: 8),
+              ...List.generate(5, (i) {
+                final sel = _tab == i;
+                return GestureDetector(
+                  onTap: () => setState(() => _tab = i),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: sel ? c.primaryLight : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10)),
+                    child: Row(children: [
+                      Icon(_icons[i], size: 18, color: sel ? c.primary : c.textMuted),
+                      const SizedBox(width: 12),
+                      Text(_labels[i], style: TextStyle(fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: sel ? c.primary : c.textMuted)),
+                    ]),
+                  ),
+                );
+              }),
+            ]),
+          ),
+          Expanded(child: Center(child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: kMaxWidth),
+            child: pages[_tab]))),
+        ]),
+      );
+    }
+
     return Scaffold(
       body: pages[_tab],
       bottomNavigationBar: NavigationBar(
@@ -308,14 +326,13 @@ class _MainShellState extends State<MainShell> {
         indicatorColor: c.primaryLight,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: List.generate(5, (i) => NavigationDestination(
-          icon: Icon(icons[i], color: c.textMuted),
-          selectedIcon: Icon(icons[i], color: c.primary),
-          label: labels[i],
+          icon: Icon(_icons[i], color: c.textMuted),
+          selectedIcon: Icon(_icons[i], color: c.primary),
+          label: _labels[i],
         )),
       ),
     );
   }
-
 
   void _goToGoal(Goal g) => Navigator.push(context,
     MaterialPageRoute(builder: (_) => GoalDetailPage(goal: g, onUpdate: _upsertGoal)));
@@ -1950,13 +1967,11 @@ class _AddGoalPageState extends State<AddGoalPage> {
 
 class SettingsPage extends StatefulWidget {
   final UserProfile user;
-  final Map<String, UserProfile> accounts;
   final void Function(UserProfile) onUserChanged;
   final VoidCallback onLogOut;
   const SettingsPage({
     super.key,
     required this.user,
-    required this.accounts,
     required this.onUserChanged,
     required this.onLogOut,
   });
@@ -1997,8 +2012,8 @@ class _SettingsPageState extends State<SettingsPage> {
             child: const Text('Cancel')),
           TextButton(
             onPressed: () {
-              Navigator.pop(context);  // close dialog
-              widget.onLogOut();       // tell GoalManagerApp to show sign in
+              Navigator.pop(context);
+              widget.onLogOut();
             },
             child: const Text('Log Out',
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600))),
@@ -2098,7 +2113,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   final tc  = allThemes[i];
                   final sel = currentTheme == t;
                   return GestureDetector(
-                    onTap: () => themeNotifier.value = t,
+                    onTap: () { themeNotifier.value = t; widget.onUserChanged(widget.user.copyWith(theme: t)); },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(

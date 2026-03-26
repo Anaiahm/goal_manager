@@ -300,6 +300,7 @@ const defaultUser = UserProfile(
   password: 'password123',
   // avatarColorIndex: 0,
   avatarIconIndex: 0,
+  theme: AppTheme.light,
 );
 
 List<Goal> sampleGoals() => [
