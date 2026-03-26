@@ -145,21 +145,26 @@ class UserProfile {
   final String name;
   final String email;
   final String password;
-  final int avatarColorIndex;
+  // final int avatarColorIndex;
+  final int avatarIconIndex;
+  final AppTheme theme;
 
   const UserProfile({
     required this.name,
     required this.email,
     required this.password,
-    this.avatarColorIndex = 0,
+    // this.avatarColorIndex = 0,
+    this.avatarIconIndex = 0,
+    this.theme = AppTheme.light,
   });
 
-  UserProfile copyWith({String? name, String? email, String? password, int? avatarColorIndex}) =>
+  UserProfile copyWith({String? name, String? email, String? password, int? avatarIconIndex, AppTheme? theme}) =>
     UserProfile(
       name:             name             ?? this.name,
       email:            email            ?? this.email,
       password:         password         ?? this.password,
-      avatarColorIndex: avatarColorIndex ?? this.avatarColorIndex,
+      avatarIconIndex: avatarIconIndex ?? this.avatarIconIndex,
+      theme:            theme            ?? this.theme,
     );
 
   String get initials {
@@ -293,7 +298,8 @@ const defaultUser = UserProfile(
   name:     'Test User',
   email:    'testuser@gmail.com',
   password: 'password123',
-  avatarColorIndex: 0,
+  // avatarColorIndex: 0,
+  avatarIconIndex: 0,
 );
 
 List<Goal> sampleGoals() => [
@@ -404,3 +410,4 @@ List<GoalTask> sampleWeeklyTodos() => [
   GoalTask(id: 5, text: 'Organize Dropbox files'),
   GoalTask(id: 6, text: 'Schedule car service'),
 ];
+

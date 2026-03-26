@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
-import 'auth.dart';   
+import 'auth.dart'; 
+import 'app_icon.dart';  
 
 void main() => runApp(const GoalManagerApp());
 
@@ -26,7 +27,7 @@ class _GoalManagerAppState extends State<GoalManagerApp> {
       name: 'Demo User',
       email: 'demo@goalmanager.app',
       password: 'password123',
-      avatarColorIndex: 0,
+      avatarIconIndex: 0,
     ),
   };
 
@@ -551,6 +552,7 @@ class Responsive extends StatelessWidget {
     );
   }
 }
+
 // ─── Goal Card ────────────────────────────────────────────────────────────────
 
 class GoalCard extends StatelessWidget {
@@ -677,14 +679,15 @@ class DashboardPage extends StatelessWidget {
       appBar: AppBar2(
         title: 'Hi, ${user.name.split(' ').first}',         // ← uses real name
         actions: [
-          CircleAvatar(
-            radius: 17,
-            backgroundColor: c.primaryLight,
-            child: Text(
-              user.initials,                                // ← uses real initials
-              style: TextStyle(color: c.primary, fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-          ),
+          // CircleAvatar(
+          //   radius: 17,
+          //   backgroundColor: c.primaryLight,
+          //   child: Text(
+          //     user.initials,                                // ← uses real initials
+          //     style: TextStyle(color: c.primary, fontWeight: FontWeight.w600, fontSize: 14),
+          //   ),
+          // ),
+          AppIconWidget(index: user.avatarIconIndex, size: 34),
           const SizedBox(width: 16),
         ],
       ),
@@ -2021,12 +2024,13 @@ class _SettingsPageState extends State<SettingsPage> {
             Card2(
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: c.primaryLight,
-                    child: Text(widget.user.initials,
-                      style: TextStyle(color: c.primary, fontWeight: FontWeight.w600, fontSize: 14)),
-                  ),
+                  // CircleAvatar(
+                  //   radius: 24,
+                  //   backgroundColor: c.primaryLight,
+                  //   child: Text(widget.user.initials,
+                  //     style: TextStyle(color: c.primary, fontWeight: FontWeight.w600, fontSize: 14)),
+                  // ),
+                  AppIconWidget(index: widget.user.avatarIconIndex, size: 34),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -2044,7 +2048,36 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             const SizedBox(height: 20),
-
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('App Icon',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: c.textMuted)),
+              ),
+            ),
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 6,
+              crossAxisSpacing: 10, mainAxisSpacing: 10,
+              children: List.generate(kAppIcons.length, (i) {
+                final sel = widget.user.avatarIconIndex == i;
+                return GestureDetector(
+                  onTap: () => widget.onUserChanged(
+                    widget.user.copyWith(avatarIconIndex: i)),
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: sel ? c.primary : Colors.transparent, width: 2.5)),
+                    child: AppIconWidget(index: i, size: 44),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 20),
             // Theme picker
             Align(
               alignment: Alignment.centerLeft,
@@ -2193,16 +2226,18 @@ class _EditProfilePageState extends State<EditProfilePage> {
           children: [
             // Avatar preview
             Center(
-              child: CircleAvatar(
-                radius: 36,
-                backgroundColor: c.primaryLight,
-                child: Text(
-                  _nameCtrl.text.trim().isNotEmpty
-                      ? UserProfile(name: _nameCtrl.text.trim(), email: '', password: '').initials
-                      : '?',
-                  style: TextStyle(color: c.primary, fontWeight: FontWeight.w700, fontSize: 22),
-                ),
-              ),
+              // child: CircleAvatar(
+              //   radius: 36,
+              //   backgroundColor: c.primaryLight,
+              //   child: Text(
+              //     _nameCtrl.text.trim().isNotEmpty
+              //         ? UserProfile(name: _nameCtrl.text.trim(), email: '', password: '').initials
+              //         : '?',
+              //     style: TextStyle(color: c.primary, fontWeight: FontWeight.w700, fontSize: 22),
+              //   ),
+              // ),
+              child: AppIconWidget(
+              index: widget.user.avatarIconIndex, size: 72),
             ),
             const SizedBox(height: 24),
 

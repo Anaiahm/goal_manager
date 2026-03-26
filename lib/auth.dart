@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
+import 'app_icon.dart';
+
 
 // ─── Avatar options ───────────────────────────────────────────
 const kAvatarColors = [
@@ -50,7 +52,7 @@ class _SignInPageState extends State<SignInPage> {
 
     final account = widget.accounts[email];
     if (account != null && account.password == pass) {
-      widget.onSignIn(account, AppTheme.light, _remember);
+      widget.onSignIn(account, account.theme, _remember);
     } else {
       setState(() { _error = 'Incorrect email or password.'; _loading = false; });
     }
@@ -132,9 +134,8 @@ class _SignInPageState extends State<SignInPage> {
                   builder: (_) => SignUpWizard(
                     onComplete: (user, theme) {
                       widget.onRegistered?.call(user, theme);
-                      // Pre-fill email after sign up
-                      _emailCtrl.text = user.email;
-                      _passCtrl.text  = user.password;
+                      // Log in directly instead of pre-filling sign in
+                      widget.onSignIn(user, theme, false);
                     },
                   ))),
                 child: RichText(text: TextSpan(
@@ -217,7 +218,9 @@ class _SignUpWizardState extends State<SignUpWizard> {
       name: _nameCtrl.text.trim(),
       email: _emailCtrl.text.trim(),
       password: _passCtrl.text,
-      avatarColorIndex: _avatarColor,
+      // avatarColorIndex: _avatarColor,
+      avatarIconIndex: _avatarColor,
+      theme: _theme,
     );
     final theme = _theme;
 
@@ -309,34 +312,46 @@ class _SignUpWizardState extends State<SignUpWizard> {
 
   // ── Step 2: Avatar ───────────────────────────────────────────
   Widget _step2(ThemeColors c) {
-    final initials = _nameCtrl.text.trim().isNotEmpty
-      ? UserProfile(name: _nameCtrl.text.trim(), email: '', password: '').initials
-      : '?';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Choose your avatar', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: c.textPrimary)),
+      Text('Choose your app icon',
+        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: c.textPrimary)),
       const SizedBox(height: 6),
-      Text('Pick a color for your profile', style: TextStyle(fontSize: 14, color: c.textMuted)),
+      Text('Pick the icon that fits your vibe',
+        style: TextStyle(fontSize: 14, color: c.textMuted)),
       const SizedBox(height: 32),
+
       // Large preview
-      Center(child: CircleAvatar(radius: 48,
-        backgroundColor: kAvatarColors[_avatarColor],
-        child: Text(initials, style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w700)))),
+      Center(child: AppIconWidget(index: _avatarColor, size: 96)),
       const SizedBox(height: 28),
-      // Color grid
-      Center(child: Wrap(spacing: 14, runSpacing: 14,
-        children: List.generate(kAvatarColors.length, (i) => GestureDetector(
-          onTap: () => setState(() => _avatarColor = i),
-          child: Container(width: 48, height: 48,
-            decoration: BoxDecoration(
-              color: kAvatarColors[i],
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: _avatarColor == i ? c.textPrimary : Colors.transparent,
-                width: 3)),
-            child: _avatarColor == i
-              ? const Icon(Icons.check, color: Colors.white, size: 22)
-              : null),
-        )))),
+
+      // Icon grid
+      GridView.count(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 3,
+        crossAxisSpacing: 16, mainAxisSpacing: 16,
+        childAspectRatio: 1.1,
+        children: List.generate(kAppIcons.length, (i) {
+          final sel = _avatarColor == i;
+          return GestureDetector(
+            onTap: () => setState(() => _avatarColor = i),
+            child: Column(children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: sel ? c.primary : Colors.transparent, width: 3)),
+                child: AppIconWidget(index: i, size: 64),
+              ),
+              const SizedBox(height: 6),
+              Text(kAppIcons[i].label,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
+                  color: sel ? c.primary : c.textMuted)),
+            ]),
+          );
+        }),
+      ),
       const SizedBox(height: 40),
       _nextButton('Continue', c),
     ]);
@@ -397,12 +412,10 @@ class _SignUpWizardState extends State<SignUpWizard> {
 
   // ── Step 4: Welcome ──────────────────────────────────────────
   Widget _step4(ThemeColors c) {
-    final initials = UserProfile(name: _nameCtrl.text.trim(), email: '', password: '').initials;
+    // final initials = UserProfile(name: _nameCtrl.text.trim(), email: '', password: '').initials;
     return Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
       const SizedBox(height: 20),
-      CircleAvatar(radius: 52,
-        backgroundColor: kAvatarColors[_avatarColor],
-        child: Text(initials, style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w700))),
+      AppIconWidget(index: _avatarColor, size: 104),
       const SizedBox(height: 24),
       Text('Welcome, ${_nameCtrl.text.trim().split(' ').first}! 🎉',
         style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: c.textPrimary),
